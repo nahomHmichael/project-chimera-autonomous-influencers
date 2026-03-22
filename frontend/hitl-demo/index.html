@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Chimera — HITL Review Dashboard (demo)</title>
+  <!--
+    Static mock only: no API, auth, persistence, publish, or wallet UI.
+    Aligns with specs/functional.md US-019 and specs/technical.md §6 (operator control plane).
+  -->
+  <style>
+    :root {
+      --bg: #1a1d23;
+      --panel: #23272f;
+      --border: #343a46;
+      --text: #e6e8eb;
+      --muted: #8b939e;
+      --accent: #3d8bfd;
+      --ok: #2ea043;
+      --warn: #d4a72c;
+      --danger: #da3633;
+      --escalate: #a371f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+    header p { margin: 4px 0 0; font-size: 12px; color: var(--muted); max-width: 720px; }
+    .layout { display: grid; grid-template-columns: 1fr 380px; min-height: calc(100vh - 72px); }
+    @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+    main { padding: 16px; overflow: auto; }
+    aside {
+      border-left: 1px solid var(--border);
+      background: var(--panel);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    @media (max-width: 960px) { aside { border-left: none; border-top: 1px solid var(--border); } }
+    h2 { margin: 0 0 10px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    tr { cursor: pointer; }
+    tr:hover { background: rgba(255,255,255,0.03); }
+    tr.selected { background: rgba(61, 139, 253, 0.12); outline: 1px solid var(--accent); outline-offset: -1px; }
+    .mono { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; }
+    .preview { max-width: 220px; color: var(--muted); font-size: 12px; }
+    .score-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+    .score-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; max-width: 72px; }
+    .score-fill { height: 100%; border-radius: 3px; transition: width 0.2s; }
+    .score-fill.high { background: var(--ok); }
+    .score-fill.mid { background: var(--warn); }
+    .score-fill.low { background: var(--danger); }
+    .flags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .flag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--border);
+      color: var(--muted);
+    }
+    .flag.alert { background: rgba(218, 54, 51, 0.25); color: #f85149; }
+    .status { font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .status.pending { color: var(--warn); }
+    .status.done { color: var(--muted); }
+    .detail-block { font-size: 12px; }
+    .detail-block dt { color: var(--muted); font-size: 10px; text-transform: uppercase; margin-top: 10px; }
+    .detail-block dd { margin: 4px 0 0; }
+    .content-preview {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    button {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    button:hover { border-color: var(--muted); }
+    button.approve { border-color: var(--ok); color: var(--ok); }
+    button.reject { border-color: var(--danger); color: #f85149; }
+    button.escalate { border-color: var(--escalate); color: #c297ff; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    textarea {
+      width: 100%;
+      min-height: 56px;
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      resize: vertical;
+    }
+    .audit { flex: 1; min-height: 120px; overflow: auto; }
+    .audit-entry {
+      font-size: 11px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: var(--bg);
+      border-radius: 6px;
+      border-left: 3px solid var(--accent);
+    }
+    .audit-entry .time { color: var(--muted); }
+    .empty { color: var(--muted); font-size: 12px; padding: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Project Chimera — HITL Review Dashboard</h1>
+    <p>
+      Operator mock: items represent Judge-routed work (medium-confidence 0.70–0.90 or sensitive-topic override).
+      Actions update <strong>local state only</strong> — no API, persistence, or publish. See <code>frontend/README.md</code>.
+    </p>
+  </header>
+  <div class="layout">
+    <main>
+      <h2>Pending queue</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Review ID</th>
+            <th>Task</th>
+            <th>Agent</th>
+            <th>Preview</th>
+            <th>Confidence</th>
+            <th>Policy</th>
+            <th>Ver</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="queue-body"></tbody>
+      </table>
+      <p class="empty" id="queue-empty" hidden>No pending items.</p>
+    </main>
+    <aside>
+      <div>
+        <h2>Selected item</h2>
+        <div id="detail" class="detail-block">
+          <p class="empty">Select a row to review.</p>
+        </div>
+        <label for="notes" style="font-size:11px;color:var(--muted)">Notes (audit placeholder)</label>
+        <textarea id="notes" placeholder="Optional reason for audit log…" disabled></textarea>
+        <div class="actions">
+          <button type="button" class="approve" id="btn-approve" disabled>Approve</button>
+          <button type="button" class="reject" id="btn-reject" disabled>Reject</button>
+          <button type="button" class="escalate" id="btn-escalate" disabled>Escalate</button>
+        </div>
+      </div>
+      <div class="audit">
+        <h2>Audit log (session)</h2>
+        <div id="audit-log"></div>
+      </div>
+    </aside>
+  </div>
+  <script>
+    const REVIEWER = "demo-operator";
+
+    /** Mock pending items — Judge → HITL path per US-010 / US-011; fields align with specs/technical.md §6.3 */
+    let items = [
+      {
+        reviewId: "880e8400-e29b-41d4-a716-446655440003",
+        taskId: "550e8400-e29b-41d4-a716-446655440000",
+        agentId: "770e8400-e29b-41d4-a716-446655440002",
+        contentPreview: "TikTok script: Ethiopian street fashion — hook + 45s CTA. Disclosure: assisted.",
+        confidenceScore: 0.82,
+        policyFlags: { sensitive_topic: false, disclosure: "assisted" },
+        stateVersion: 7,
+        status: "PENDING",
+        createdAt: "2026-03-22T13:00:00Z",
+      },
+      {
+        reviewId: "880e8400-e29b-41d4-a716-446655440004",
+        taskId: "551a8400-e29b-41d4-a716-446655440001",
+        agentId: "770e8400-e29b-41d4-a716-446655440002",
+        contentPreview: "Reply draft: @brand mention — tone check, no financial claims.",
+        confidenceScore: 0.71,
+        policyFlags: { sensitive_topic: false, disclosure: "automated" },
+        stateVersion: 7,
+        status: "PENDING",
+        createdAt: "2026-03-22T12:15:00Z",
+      },
+      {
+        reviewId: "880e8400-e29b-41d4-a716-446655440005",
+        taskId: "552b8400-e29b-41d4-a716-446655440002",
+        agentId: "880f8400-e29b-41d4-a716-446655440003",
+        contentPreview: "Thread: wellness supplement trends — classifier flagged health-adjacent language.",
+        confidenceScore: 0.94,
+        policyFlags: { sensitive_topic: true, class: "health_advice", disclosure: "assisted" },
+        stateVersion: 9,
+        status: "PENDING",
+        createdAt: "2026-03-22T11:40:00Z",
+      },
+    ];
+
+    let selectedId = null;
+    const auditEntries = [];
+
+    function scoreClass(score) {
+      if (score > 0.9) return "high";
+      if (score >= 0.7) return "mid";
+      return "low";
+    }
+
+    function renderFlags(flags) {
+      const parts = Object.entries(flags).map(([k, v]) => {
+        const alert = k === "sensitive_topic" && v === true;
+        return `<span class="flag${alert ? " alert" : ""}">${k}: ${v}</span>`;
+      });
+      return `<div class="flags">${parts.join("")}</div>`;
+    }
+
+    function renderQueue() {
+      const tbody = document.getElementById("queue-body");
+      const empty = document.getElementById("queue-empty");
+      const pending = items.filter((i) => i.status === "PENDING");
+      tbody.innerHTML = "";
+      if (pending.length === 0) {
+        empty.hidden = false;
+        return;
+      }
+      empty.hidden = true;
+      for (const row of pending) {
+        const tr = document.createElement("tr");
+        tr.dataset.id = row.reviewId;
+        if (row.reviewId === selectedId) tr.classList.add("selected");
+        const pct = Math.round(row.confidenceScore * 100);
+        tr.innerHTML = `
+          <td class="mono">${row.reviewId.slice(0, 8)}…</td>
+          <td class="mono">${row.taskId.slice(0, 8)}…</td>
+          <td class="mono">${row.agentId.slice(0, 8)}…</td>
+          <td class="preview">${escapeHtml(row.contentPreview.slice(0, 80))}${row.contentPreview.length > 80 ? "…" : ""}</td>
+          <td>
+            <div class="score-wrap">
+              <span>${row.confidenceScore.toFixed(2)}</span>
+              <div class="score-bar"><div class="score-fill ${scoreClass(row.confidenceScore)}" style="width:${pct}%"></div></div>
+            </div>
+          </td>
+          <td>${renderFlags(row.policyFlags)}</td>
+          <td class="mono">${row.stateVersion}</td>
+          <td><span class="status pending">${row.status}</span></td>
+        `;
+        tr.addEventListener("click", () => select(row.reviewId));
+        tbody.appendChild(tr);
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function select(reviewId) {
+      selectedId = reviewId;
+      const row = items.find((i) => i.reviewId === reviewId);
+      const detail = document.getElementById("detail");
+      const notes = document.getElementById("notes");
+      const btns = ["btn-approve", "btn-reject", "btn-escalate"].map((id) => document.getElementById(id));
+      renderQueue();
+      if (!row || row.status !== "PENDING") {
+        detail.innerHTML = '<p class="empty">Select a row to review.</p>';
+        notes.disabled = true;
+        notes.value = "";
+        btns.forEach((b) => (b.disabled = true));
+        return;
+      }
+      notes.disabled = false;
+      btns.forEach((b) => (b.disabled = false));
+      const pct = Math.round(row.confidenceScore * 100);
+      detail.innerHTML = `
+        <dl>
+          <dt>review_id</dt><dd class="mono">${row.reviewId}</dd>
+          <dt>task_id</dt><dd class="mono">${row.taskId}</dd>
+          <dt>agent_id</dt><dd class="mono">${row.agentId}</dd>
+          <dt>confidence_score</dt><dd>
+            <div class="score-wrap">
+              <span>${row.confidenceScore.toFixed(2)}</span>
+              <div class="score-bar"><div class="score-fill ${scoreClass(row.confidenceScore)}" style="width:${pct}%"></div></div>
+            </div>
+            <span style="font-size:11px;color:var(--muted)">Judge band: &gt;0.90 auto · 0.70–0.90 HITL · &lt;0.70 retry</span>
+          </dd>
+          <dt>policy_flags</dt><dd>${renderFlags(row.policyFlags)}</dd>
+          <dt>state_version</dt><dd class="mono">${row.stateVersion} <span style="color:var(--muted)">(would echo as expected_state_version on submit)</span></dd>
+          <dt>created_at</dt><dd class="mono">${row.createdAt}</dd>
+          <dt>status</dt><dd><span class="status pending">${row.status}</span></dd>
+        </dl>
+        <div class="content-preview">${escapeHtml(row.contentPreview)}</div>
+      `;
+    }
+
+    function applyDecision(decision) {
+      const row = items.find((i) => i.reviewId === selectedId);
+      if (!row || row.status !== "PENDING") return;
+      const notes = document.getElementById("notes").value.trim();
+      const reason = notes || `(${decision.toLowerCase()} — no notes)`;
+      row.status = decision === "APPROVE" ? "APPROVED" : decision === "REJECT" ? "REJECTED" : "ESCALATED";
+      const ts = new Date().toISOString();
+      auditEntries.unshift({
+        reviewer: REVIEWER,
+        timestamp: ts,
+        decision,
+        reviewId: row.reviewId,
+        taskId: row.taskId,
+        reason,
+      });
+      selectedId = null;
+      document.getElementById("notes").value = "";
+      renderQueue();
+      renderAudit();
+      select(null);
+      document.getElementById("detail").innerHTML = '<p class="empty">Select a row to review.</p>';
+      document.getElementById("notes").disabled = true;
+      ["btn-approve", "btn-reject", "btn-escalate"].forEach((id) => (document.getElementById(id).disabled = true));
+    }
+
+    function renderAudit() {
+      const el = document.getElementById("audit-log");
+      if (auditEntries.length === 0) {
+        el.innerHTML = '<p class="empty">No decisions in this session.</p>';
+        return;
+      }
+      el.innerHTML = auditEntries
+        .map(
+          (e) => `
+        <div class="audit-entry">
+          <strong>${escapeHtml(e.decision)}</strong> · review <span class="mono">${e.reviewId.slice(0, 8)}…</span><br/>
+          <span class="time">${escapeHtml(e.timestamp)}</span> · reviewer <span class="mono">${escapeHtml(e.reviewer)}</span><br/>
+          <span style="color:var(--muted)">Reason placeholder:</span> ${escapeHtml(e.reason)}
+        </div>
+      `
+        )
+        .join("");
+    }
+
+    document.getElementById("btn-approve").addEventListener("click", () => applyDecision("APPROVE"));
+    document.getElementById("btn-reject").addEventListener("click", () => applyDecision("REJECT"));
+    document.getElementById("btn-escalate").addEventListener("click", () => applyDecision("ESCALATE"));
+
+    renderQueue();
+    renderAudit();
+  </script>
+</body>
+</html>
