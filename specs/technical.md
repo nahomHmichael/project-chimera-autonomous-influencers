@@ -1,7 +1,8 @@
 # Project Chimera — Technical Specification
-> **Version:** 1.0.0  
+> **Version:** 1.1.0  
 > **Status:** Ratified  
-> **Source:** SRS v2026 §6.2, §3
+> **Source:** SRS v2026 §6.2, §3  
+> **Changelog:** 1.1.0 — HITL Dashboard operator contract (§6); aligns with `specs/functional.md` US-019 and Judge/OCC models in §1–§4.
 
 ---
 
@@ -116,24 +117,32 @@ public record TransactionRequest(
 
 ---
 
-### POST /api/judge/review — Submit Judge Decision
-**Request:**
+### POST /api/judge/review — Submit Human Review Decision (HITL)
+**Normative contract:** Field semantics, OCC rules, and audit requirements are defined in **§6 HITL Dashboard**. `decision` MUST be one of `APPROVE` | `REJECT` | `ESCALATE` (see §6.4).
+
+**Request (illustrative):**
 ```json
 {
+  "review_id": "880e8400-e29b-41d4-a716-446655440003",
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
   "decision": "APPROVE",
   "reviewer_id": "human-reviewer-001",
-  "notes": "Looks good, approved for publish"
+  "expected_state_version": 7,
+  "notes": "Looks good, approved for downstream runtime (dashboard does not publish)"
 }
 ```
 **Response `200`:**
 ```json
 {
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "review_id": "880e8400-e29b-41d4-a716-446655440003",
+  "decision": "APPROVE",
   "committed": true,
-  "new_state_version": 8
+  "new_state_version": 8,
+  "audit_event_id": "ae-550e8400-20260322T140001Z"
 }
 ```
+**Response `409` (OCC conflict):** `expected_state_version` does not match current global state; reviewer must refresh queue item.
 
 ---
 
@@ -304,3 +313,108 @@ erDiagram
 | HITL SLA | Human action within 2 hours; escalate after 4 hours | NFR 1.1 |
 | Budget cap | Max $50 USDC/day per agent (configurable) | FR 5.2 |
 | Sensitive topic | 100% escalation to HITL, zero auto-publish | NFR 1.2 |
+
+---
+
+## 6. Human-in-the-Loop Dashboard — Technical Contract
+
+This section specifies the **operator control plane** that consumes Judge-routed work and emits **durable review decisions**. It is **downstream of** the FastRender swarm boundary: **Worker → `review_queue` → Judge** establishes routing; the dashboard **does not** participate in Worker execution or MCP tool invocation for publish.
+
+**User story:** `specs/functional.md` **US-019**. **Architecture:** `research/architecture_strategy.md` §4 (HITL flow, SLA).
+
+### 6.1 Purpose
+
+- Present **only** items the **Judge** has placed in the HITL queue (`hitl:queue` per §4, or equivalent persistent projection).
+- Accept **APPROVE**, **REJECT**, or **ESCALATE** from an authenticated **Human Reviewer** role.
+- Persist an **audit-grade** decision record and drive **Chimera-internal** state transitions (commit, retry, escalation handoff)—**never** direct social publish or third-party API calls from the dashboard tier.
+
+### 6.2 Trigger conditions (queue membership)
+
+A **HITL review item** MUST be materialized when **any** of the following holds after Judge evaluation of an `AgentResult` (§1):
+
+| Condition | Rule |
+|---|---|
+| **Medium-confidence band** | `confidenceScore` ∈ **[0.70, 0.90]** (inclusive bounds as in NFR 1.1 / US-010). |
+| **Sensitive topic** | `policyFlags` indicate mandatory HITL (US-011), **independent of** confidence. |
+| **Operational escalation** | System policy re-queues a previously approved item for re-review (optional; if used, new `reviewId`). |
+
+Items with **confidenceScore < 0.70** without a sensitive-topic flag MUST **not** occupy the HITL dashboard queue for “approve-to-publish” purposes; they follow automated reject/retry. Items with **confidenceScore > 0.90** MUST **not** appear **unless** US-011 (or equivalent policy) forces HITL.
+
+### 6.3 Review item contract (logical schema)
+
+Each queue entry MUST be representable as a JSON object with at least:
+
+| JSON field | Type | Required | Description |
+|---|---|---|---|
+| `review_id` | UUID | yes | Primary key for this review episode. |
+| `task_id` | UUID | yes | Correlates to `AgentTask.taskId` / pipeline job. |
+| `agent_id` | UUID | yes | Owning agent / persona. |
+| `content_summary_or_preview` | string | yes | Sanitized summary or truncated preview; not an executable payload. |
+| `confidence_score` | number | yes | **Float in [0.0, 1.0]**; aligns with `AgentResult.confidenceScore`. |
+| `policy_flags` | string or object | yes | Structured policy signals; if object-shaped on the wire, treat as a documented sub-schema; **Java DTOs** SHOULD use a JSON string for opaque flag bags (§1). |
+| `created_at` | string (RFC 3339) | yes | Enqueue time. |
+| `state_version` | integer | yes | **Expected** global OCC version when the item was enqueued; reviewer submits `expected_state_version` matching this (or current) per §6.5. |
+
+**Example — GET /api/hitl/queue (illustrative):**
+```json
+{
+  "items": [
+    {
+      "review_id": "880e8400-e29b-41d4-a716-446655440003",
+      "task_id": "550e8400-e29b-41d4-a716-446655440000",
+      "agent_id": "770e8400-e29b-41d4-a716-446655440002",
+      "content_summary_or_preview": "TikTok script: Ethiopian street fashion — 320 chars truncated…",
+      "confidence_score": 0.82,
+      "policy_flags": "{\"sensitive_topic\":false,\"disclosure\":\"assisted\"}",
+      "created_at": "2026-03-22T13:00:00Z",
+      "state_version": 7
+    }
+  ]
+}
+```
+
+### 6.4 Review decision contract
+
+Each reviewer submission MUST include:
+
+| JSON field | Type | Required | Description |
+|---|---|---|---|
+| `review_id` | UUID | yes | Target queue item. |
+| `task_id` | UUID | yes | Must match the item's `task_id`. |
+| `decision` | string enum | yes | `APPROVE` \| `REJECT` \| `ESCALATE`. |
+| `reviewer_id` | string | yes | Stable operator identity (subject from IdP or service account). |
+| `expected_state_version` | integer | yes | OCC guard: see §6.5. |
+| `notes` | string | no | Free text for audit; MUST NOT contain secrets. |
+| `decided_at` | string (RFC 3339) | no | Server MAY set if omitted. |
+
+**Semantics:**
+
+- **APPROVE** — Authorize runtime to proceed (e.g. mark job approved, enqueue publish **through existing Chimera/MCP paths**). Dashboard response MUST NOT imply that HTTP response body equals “posted to platform.”
+- **REJECT** — Deny output; runtime MUST transition to reject/retry consistent with US-010 (Planner signal, no auto-publish).
+- **ESCALATE** — Hand off to tier-2 process; item leaves default reviewer queue or changes ownership; **no** publish authorization implied.
+
+### 6.5 `state_version` validation (OCC)
+
+- The control plane MUST compare `expected_state_version` on submit against **`GlobalState` / `CONTENT_JOB.state_version`** (or authoritative source defined at implementation time).
+- **Match:** persist decision, bump `state_version` monotonically, append **audit event** (§6.6).
+- **Mismatch:** respond **`409 Conflict`**; **no** side effect on publish or global commit; reviewer refreshes item.
+
+This mirrors **US-012** / `AgentResult.stateVersion` discipline across the Planner / Worker / Judge boundary.
+
+### 6.6 Auditability requirements
+
+- Every decision MUST append an **append-only audit record** containing at minimum: `audit_event_id`, `review_id`, `task_id`, `agent_id`, `decision`, `reviewer_id`, `expected_state_version`, `new_state_version` (if any), `decided_at`, and redacted `notes`.
+- Audit records MUST be queryable for compliance (EU AI Act transparency alignment per US-011 / NFR 2.1).
+- Corrections MUST **not** mutate prior audit rows; use compensating events if policy allows reversal.
+
+**Implementation hint:** `AGENT_LOG` or dedicated `HITL_AUDIT` table (ERD extension left to implementation); `event_type` e.g. `hitl_decision`.
+
+### 6.7 Non-goals
+
+- **Product UX:** Pixel-perfect consumer UI, marketing sites, or mobile apps.
+- **Direct publish:** Any API or UI action that calls Twitter/Instagram/etc. from the dashboard process.
+- **Arbitrary integrations:** Webhooks to unapproved third parties, embedded LLM calls in the dashboard tier for content rewriting, or vendor SDKs in the dashboard codebase.
+- **Substituting Judge:** Operators cannot bypass Judge routing rules or force auto-publish for sub-threshold confidence without a **new** Judge-evaluated artifact.
+- **Financial execution:** On-chain or budget mutation from the dashboard; **CFO Judge** paths remain separate (§2 commerce APIs).
+
+---
