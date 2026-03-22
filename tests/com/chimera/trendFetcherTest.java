@@ -65,7 +65,7 @@ class trendFetcherTest {
          */
         @Test
         @DisplayName("returns AgentResult with confidenceScore in [0,1] and non-blank JSON payload")
-        void returnsResultWithValidConfidenceAndPayload() {
+        void returnsResultWithValidConfidenceAndPayload() throws Exception {
             TrendFetcherWorker worker = TrendFetcherWorker.create();
             AgentResult result = worker.execute(sampleTrendFetchTask());
             assertNotNull(result);
