@@ -1,51 +1,66 @@
-# Project Chimera — AI Agent Context & Prime Directives
+# PROJECT CONTEXT
 
-## Project Context
+Project Chimera is an autonomous influencer network: AI agents research trends, produce multimodal content, and manage social engagement under safety gates. Internal coordination uses the FastRender Swarm pattern (Planner / Worker / Judge). Model Context Protocol (MCP) is the **only** integration layer for external systems—no alternate integration path is permitted. The platform targets **1,000+ concurrent agents** and is implemented on **Java 21+**.
 
-This is **Project Chimera**, an Autonomous Influencer Network built on the
-**FastRender Swarm Architecture** (Planner/Worker/Judge pattern) using **Java 21+**
-and the **Model Context Protocol (MCP)** for all external integrations.
+---
 
-The codebase is structured around Spec-Driven Development. The `specs/` directory
-is the source of truth for all behaviour. The `skills/` directory defines agent runtime
-capabilities. The `research/` directory contains architectural decisions.
+# PRIME DIRECTIVE (HIGH PRIORITY — MUST STAND OUT)
 
-## PRIME DIRECTIVE
+> NEVER generate implementation code without first reading the relevant
+> spec in specs/. The specs/ directory is the source of truth. Ambiguity
+> is the enemy of AI. If the spec is vague, ask for clarification before
+> writing a single line of code.
 
-**NEVER generate implementation code without first reading the relevant spec in `specs/`.**
+---
 
-Before writing any class, method, or test:
-1. Read `specs/_meta.md` for hard constraints
-2. Read `specs/functional.md` for the relevant user story
-3. Read `specs/technical.md` for the exact DTO, API contract, or schema
-4. Explain your implementation plan BEFORE writing any code
+# MANDATORY WORKFLOW
 
-## Java-Specific Directives
+Step 1 — Read specs/_meta.md
 
-- **Records ONLY** for all DTOs. Never use mutable POJOs or generic `Map<String, Object>`
-  for agent payloads. Example: `public record AgentTask(...) {}`
-- **Virtual Threads ONLY** for concurrency: `Executors.newVirtualThreadPerTaskExecutor()`
-  Never use `new Thread()`, `ExecutorService.newFixedThreadPool()`, or legacy thread pools.
-- **JUnit 5 ONLY** for all tests. Use `@ExtendWith(MockitoExtension.class)`.
-- **No direct API calls** in agent logic. All external calls go through the MCP Client layer.
-- Java 21+ idioms: use pattern matching, switch expressions, sealed classes where appropriate.
+Step 2 — Read specs/functional.md (US-XXX)
 
-## Architecture Rules
+Step 3 — Read specs/technical.md
 
-- Planner pushes `AgentTask` records to Redis `task_queue` (Redis Stream)
-- Workers pop from `task_queue`, produce `AgentResult` records, push to `review_queue`
-- Judge pops from `review_queue`, validates OCC `state_version`, routes by `confidence_score`
-- CFO Sub-Judge validates ALL `TransactionRequest` records before Coinbase AgentKit calls
-- HITL threshold: `> 0.90` auto-approve, `0.70–0.90` async human, `< 0.70` reject/retry
+Step 4 — Describe implementation plan (plain English)
 
-## Traceability Rule
+Step 5 — THEN write code
 
-Every generated class MUST include a Javadoc comment referencing its SRS section.
-Example: `/** Planner Service — SRS §3.1.1 / US-001, US-002 */`
+---
 
-## What NOT to do
+# JAVA 21+ DIRECTIVES
 
-- Do NOT use `Thread.sleep()` in production code (only allowed in stub/mock tests)
-- Do NOT call Twitter/Instagram/Coinbase APIs directly — use MCP Tools
-- Do NOT hardcode API keys — always use `System.getenv()`
-- Do NOT write tests after implementation — tests define the contract first (TDD)
+- **DTOs:** Use Java `record` types **only** for DTOs. Do **not** use mutable POJOs for DTOs. Do **not** use `Map<String, Object>` (or similar untyped maps) for agent payloads or DTO fields.
+- **Concurrency:** Use **virtual threads only** via `Executors.newVirtualThreadPerTaskExecutor()`. **Forbidden:** `Thread`, fixed-size thread pools, or other non–virtual-thread executor models for agent/worker concurrency.
+- **Testing:** JUnit 5 only; use `@ExtendWith(MockitoExtension.class)` where Mockito is needed.
+- **Language style:** Prefer modern Java—pattern matching, `switch` expressions, and `sealed` classes where they clarify design.
+- **Documentation:** Every **public** class must have Javadoc that references the applicable **SRS** section and **User Story** (e.g. US-XXX).
+
+---
+
+# ARCHITECTURE RULES
+
+- **Redis Streams:** Planner publishes work to `task_queue`; Worker results flow to `review_queue` (`task_queue` → `review_queue`).
+- **Control flow:** **Planner → Worker → Judge** end-to-end for coordinated tasks.
+- **Confidence routing (Judge):**
+  - **> 0.90** → auto execute
+  - **0.70–0.90** → HITL (human-in-the-loop review)
+  - **< 0.70** → reject and retry (signal Planner to re-plan / re-queue)
+- **Financial actions:** **CFO Sub-Judge** validation is required **before any** financial execution (e.g. on-chain or budgeted spend).
+- **External I/O:** **MCP is the only external interaction layer** for third-party systems and runtime bridges—no direct SDK/API calls from agent core code.
+
+---
+
+# WHAT NEVER TO DO
+
+- No direct external API calls (everything goes through MCP).
+- No hardcoded secrets—use `System.getenv()`, never commit or log secrets.
+- No test-after-code: write or update tests **first** (TDD), then implementation.
+- No `Thread.sleep` in production code.
+- No mutable DTOs (records only for DTOs; see JAVA 21+ DIRECTIVES).
+
+---
+
+# TRACEABILITY RULE
+
+- **Every class** must remain traceable to the **SRS** and a **User Story** (US-XXX) in Javadoc (and in design discussion when relevant).
+- **Every test** must state or clearly imply which **spec** requirement or acceptance criterion it validates (spec validation reference).
