@@ -33,6 +33,9 @@ jobs:
       - name: Make Maven Wrapper executable
         run: chmod +x mvnw
 
+      - name: Spec sanity (ratified docs + agent rules)
+        run: make spec-check
+
       - name: Lint (Checkstyle)
         run: make lint
 
