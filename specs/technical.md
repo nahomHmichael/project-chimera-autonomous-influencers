@@ -8,7 +8,8 @@
 ## 1. Java Record DTOs
 
 All data transfer between Planner, Workers, and Judge MUST use Java Records.
-No mutable POJOs or generic Maps for agent payloads.
+No mutable POJOs or generic Maps for agent payloads (e.g. do not use
+`Map<String, Object>` on DTOs; encode opaque structured blobs as JSON strings).
 
 ```java
 // --- Core Task DTO (matches SRS §6.2 Schema 1) ---
@@ -39,12 +40,13 @@ public record AgentResult(
 ) {}
 
 // --- Trend Data DTO ---
+// rawMetadataJson: opaque JSON document from MCP (maps to JSONB raw_metadata in persistence)
 public record TrendData(
     String platform,
     String topic,
     float viralityScore,
     Instant fetchedAt,
-    Map<String, Object> rawMetadata
+    String rawMetadataJson
 ) {}
 
 // --- Persona DTO (from SOUL.md) ---
