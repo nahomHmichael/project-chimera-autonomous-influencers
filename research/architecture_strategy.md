@@ -18,8 +18,8 @@ behaviour. Crucially, specifications serve a dual purpose: guiding initial code 
 AND ensuring long-term comprehension by both humans and LLMs in large codebases.
 
 A second key insight is the distinction between **developer tools** (MCP servers used during
-development git, filesystem, code search) and **agent runtime tools** (skills used at
-execution time downloading content, transcribing audio, posting to social platforms).
+development — git, filesystem, code search) and **agent runtime tools** (skills used at
+execution time — downloading content, transcribing audio, posting to social platforms).
 This maps directly to Chimera's architecture, where these two layers must be cleanly
 separated.
 
