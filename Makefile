@@ -40,10 +40,12 @@ verify:
 
 ## spec-check: Sanity-check ratified spec files (non-Java)
 spec-check:
-	@test -s specs/_meta.md       || (echo "missing/empty: specs/_meta.md" && exit 1)
-	@test -s specs/functional.md  || (echo "missing/empty: specs/functional.md" && exit 1)
-	@test -s specs/technical.md   || (echo "missing/empty: specs/technical.md" && exit 1)
-	@test -s CLAUDE.md            || (echo "missing/empty: CLAUDE.md" && exit 1)
+	@test -s specs/_meta.md                  || (echo "missing/empty: specs/_meta.md" && exit 1)
+	@test -s specs/functional.md             || (echo "missing/empty: specs/functional.md" && exit 1)
+	@test -s specs/technical.md              || (echo "missing/empty: specs/technical.md" && exit 1)
+	@test -s specs/openclaw_integration.md   || (echo "missing/empty: specs/openclaw_integration.md" && exit 1)
+	@test -s CLAUDE.md                       || (echo "missing/empty: CLAUDE.md" && exit 1)
+	@test -s .cursor/rules/CLAUDE.md         || (echo "missing/empty: .cursor/rules/CLAUDE.md" && exit 1)
 
 ## docker-test: Requires a Dockerfile in repo root (optional; not present in all checkouts)
 docker-test:
