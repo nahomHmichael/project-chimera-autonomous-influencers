@@ -1,0 +1,39 @@
+# CodeRabbit — AI review policy for Project Chimera
+# Align reviews with CLAUDE.md, specs/, and research/architecture_strategy.md.
+
+language: en-US
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  poem: false
+
+  path_instructions:
+    - path: "src/**/*.java"
+      instructions: |
+        Project Chimera: autonomous influencer network on Java 21+ (FastRender Swarm: Planner / Worker / Judge).
+
+        - **Spec alignment:** Changes must match ratified docs under `specs/` (especially `specs/technical.md`, `specs/functional.md`). Flag drift or silent contract changes without spec updates.
+        - **DTOs:** Agent payloads and transfer types must use Java `record` only—no mutable DTO POJOs, no `Map<String, Object>` on DTO fields; opaque blobs as JSON strings per technical spec.
+        - **Immutability & thread safety:** Prefer immutable data across Planner/Worker/Judge boundaries; records and clear ownership—avoid shared mutable state without documented concurrency control.
+        - **Concurrency:** Worker-scale execution must use virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`). Flag fixed thread pools, raw `Thread`, or legacy pool patterns for agent/worker paths.
+        - **External I/O:** Agent core must not call third-party HTTP/SDK APIs directly—all runtime external access via MCP only. Flag new REST clients, vendor SDKs, or bypassing `McpInvocationGateway`-style boundaries.
+        - **Security:** No hardcoded secrets; use `System.getenv()` or approved config. Flag logging of keys/tokens/PII. Commerce paths must respect CFO / budget gates in design.
+        - **Architecture:** Respect Redis stream flow `task_queue` → `review_queue`, Judge confidence bands, CFO Sub-Judge before financial execution, and OCC (`state_version`) where applicable.
+        - **Traceability:** Public types should carry Javadoc referencing SRS sections and User Stories (US-XXX). Tests should tie to spec acceptance or user stories where relevant.
+        - **Maintainability:** Naming and packages should stay consistent with `com.chimera.planner`, `worker`, `judge`, `skill`, `model`, `streams`, etc.
+
+    - path: "tests/**/*.java"
+      instructions: |
+        - JUnit 5 only; prefer `@ExtendWith(MockitoExtension.class)` when Mockito is used.
+        - Tests should document which spec or US-XXX they validate (class or method Javadoc/comments).
+        - Contract tests may be red intentionally (TDD empty slots)—review for clarity and spec fidelity, not only green builds.
+
+    - path: "pom.xml"
+      instructions: |
+        - Flag dependencies that introduce direct HTTP clients or vendor SDKs into agent-runtime code paths without an MCP boundary and spec update.
+        - Keep Java 21 and enterprise plugin usage consistent with project conventions.
+
+    - path: "specs/**/*.md"
+      instructions: |
+        - Specs are source of truth; check internal consistency and traceability to user stories when related Java changes are present in the PR.
