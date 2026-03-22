@@ -1,5 +1,5 @@
 # CodeRabbit — AI review policy for Project Chimera
-# Align reviews with CLAUDE.md, specs/, and research/architecture_strategy.md.
+# Align reviews with CLAUDE.md, specs/ (incl. openclaw_integration.md), and research/.
 
 language: en-US
 
@@ -37,3 +37,4 @@ reviews:
     - path: "specs/**/*.md"
       instructions: |
         - Specs are source of truth; check internal consistency and traceability to user stories when related Java changes are present in the PR.
+        - OpenClaw / agent-network boundaries must stay MCP-only (`specs/openclaw_integration.md` §10); flag direct HTTP/SDK proposals for network publish without MCP tool indirection.
