@@ -1,35 +1,55 @@
-.PHONY: setup test lint spec-check docker-test help
+# Project Chimera — Makefile (enterprise Java / Maven workflow)
+#
+# ASSUMPTIONS
+# -----------
+# - JDK 21+ installed; JAVA_HOME points at the JDK (required by Maven).
+# - GNU Make available (Git Bash, WSL, macOS, Linux). Native Windows CMD does not ship Make;
+#   use Git Bash here, or invoke Maven directly:  mvnw.cmd <goal>
+# - Maven Wrapper (./mvnw, mvnw.cmd) is the canonical build entrypoint so a global `mvn`
+#   install is optional.
+# - `make test` runs the full Surefire suite (JUnit 5), including sources under `tests/`
+#   (build-helper-maven-plugin). Contract tests are expected to fail until implementations
+#   and Skill SPI registrations exist (TDD empty slots).
+# - Checkstyle is invoked via `mvn checkstyle:check` (no execution bound to a lifecycle phase in
+#   pom.xml); `make verify` runs `mvn verify` then Checkstyle in one step.
 
-## Uses Maven Wrapper (./mvnw) so Apache Maven does not need to be on PATH.
-## Windows CMD/PowerShell: run `mvnw.cmd test` instead of `make test`.
-## Requires JDK 21+ and JAVA_HOME pointing at the JDK (see `java -version`).
+.PHONY: setup test lint clean verify spec-check docker-test help
 
-## setup: Install dependencies (skip tests)
+# Wrapper script (Unix / Git Bash). On Windows CMD/PowerShell: substitute mvnw.cmd manually.
+MVN := ./mvnw
+
+## setup: Resolve dependencies, compile, package; skip tests (local prep / CI cache warm-up)
 setup:
-	./mvnw clean install -DskipTests
+	$(MVN) clean install -DskipTests
 
-## test: Run all JUnit 5 tests (expect failures — TDD empty slots)
+## test: Run all JUnit 5 tests (Surefire); expect failures until scaffolds are implemented
 test:
-	./mvnw test
+	$(MVN) test
 
-## lint: Run Checkstyle code quality checks
+## lint: Static analysis — Checkstyle (checkstyle.xml, maven-checkstyle-plugin)
 lint:
-	./mvnw checkstyle:check
+	$(MVN) checkstyle:check
 
-## spec-check: Verify all spec files exist and are non-empty
+## clean: Remove build output (target/)
+clean:
+	$(MVN) clean
+
+## verify: Maven verify phase (compile, test, package) plus Checkstyle — use `make clean verify` for CI-style clean build
+verify:
+	$(MVN) verify checkstyle:check
+
+## spec-check: Sanity-check ratified spec files (non-Java)
 spec-check:
-	@echo "🔍 Checking spec files..."
-	@test -s specs/_meta.md       && echo "✅ specs/_meta.md" || (echo "❌ specs/_meta.md missing/empty" && exit 1)
-	@test -s specs/functional.md  && echo "✅ specs/functional.md" || (echo "❌ specs/functional.md missing/empty" && exit 1)
-	@test -s specs/technical.md   && echo "✅ specs/technical.md" || (echo "❌ specs/technical.md missing/empty" && exit 1)
-	@test -s CLAUDE.md            && echo "✅ CLAUDE.md" || (echo "❌ CLAUDE.md missing/empty" && exit 1)
-	@echo "✅ All spec checks passed"
+	@test -s specs/_meta.md       || (echo "missing/empty: specs/_meta.md" && exit 1)
+	@test -s specs/functional.md  || (echo "missing/empty: specs/functional.md" && exit 1)
+	@test -s specs/technical.md   || (echo "missing/empty: specs/technical.md" && exit 1)
+	@test -s CLAUDE.md            || (echo "missing/empty: CLAUDE.md" && exit 1)
 
-## docker-test: Build Docker image and run tests inside container (Bonus)
+## docker-test: Requires a Dockerfile in repo root (optional; not present in all checkouts)
 docker-test:
 	docker build -t chimera-test .
 	docker run --rm chimera-test mvn test
 
-## help: Show available commands
+## help: List targets
 help:
-	@grep -E '^##' Makefile | sed 's/## //'
+	@grep -E '^##' Makefile | sed 's/^## /  /'
