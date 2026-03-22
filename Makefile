@@ -1,16 +1,20 @@
 .PHONY: setup test lint spec-check docker-test help
 
+## Uses Maven Wrapper (./mvnw) so Apache Maven does not need to be on PATH.
+## Windows CMD/PowerShell: run `mvnw.cmd test` instead of `make test`.
+## Requires JDK 21+ and JAVA_HOME pointing at the JDK (see `java -version`).
+
 ## setup: Install dependencies (skip tests)
 setup:
-	mvn clean install -DskipTests
+	./mvnw clean install -DskipTests
 
 ## test: Run all JUnit 5 tests (expect failures — TDD empty slots)
 test:
-	mvn test
+	./mvnw test
 
 ## lint: Run Checkstyle code quality checks
 lint:
-	mvn checkstyle:check
+	./mvnw checkstyle:check
 
 ## spec-check: Verify all spec files exist and are non-empty
 spec-check:
