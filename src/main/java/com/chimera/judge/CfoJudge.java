@@ -1,26 +1,31 @@
 package com.chimera.judge;
 
-import com.chimera.commerce.BudgetExceededException;
-import com.chimera.model.CfoSpendValidationResult;
-import com.chimera.model.DailySpendSnapshot;
 import com.chimera.model.TransactionRequest;
+import com.chimera.model.TransactionReviewResult;
 
 /**
- * CFO Sub-Judge — validates spend requests before any financial MCP execution (e.g. Coinbase AgentKit).
+ * CFO Sub-Judge — financial governance gate before any ledger mutation or MCP financial execution.
  *
- * <p><b>SRS:</b> §4.5 agentic commerce, FR 5.2.
- * <b>User stories:</b> US-014 (daily cap), US-013 (balance pre-check at Worker), US-015 (secrets via env).</p>
+ * <p><b>Spec:</b> {@code specs/technical.md} §7.2 (CFO Judge gate), §2 commerce; FR 4.0 MCP-only execution.
+ * <b>Architecture:</b> {@code research/architecture_strategy.md} §3 (CFO Sub-Judge), §6 MCP boundary.
+ * <b>User stories:</b> US-014 (daily cap), US-013 (balance awareness), US-015 (secrets not in DTOs).</p>
+ *
+ * <p>Implementations evaluate {@link TransactionRequest} against budget and policy; they MUST NOT call
+ * third-party HTTP APIs directly—post-approval execution belongs to MCP-mediated runtime paths.</p>
  */
 public interface CfoJudge {
 
     /**
-     * Validates a proposed transaction against remaining daily budget and policy.
+     * Reviews a single governed transaction proposal. Scaffold: no default implementation; callers
+     * supply a concrete judge (or test double).
      *
-     * @param request proposed ledger motion
-     * @param spend   tracked spend for the agent (Redis / ledger projection)
-     * @return structured approval outcome (never {@code null})
-     * @throws BudgetExceededException if the request would exceed configured caps
+     * @param request immutable envelope (normally {@link com.chimera.model.ApprovalStatus#PENDING} on first
+     *                submit)
+     * @return non-null outcome with {@link TransactionReviewResult#approvalStatus()} and OCC hint
+     *         {@link TransactionReviewResult#newStateVersion()}
+     * @throws com.chimera.commerce.BudgetExceededException     if implementation uses exceptional control flow
+     *                                                        for over-cap (§7.6 V-6; US-014)
+     * @throws com.chimera.commerce.InvalidTransactionRequestException if §7.6 validation fails
      */
-    CfoSpendValidationResult validate(TransactionRequest request, DailySpendSnapshot spend)
-            throws BudgetExceededException;
+    TransactionReviewResult review(TransactionRequest request);
 }
