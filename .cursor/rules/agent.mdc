@@ -1,0 +1,16 @@
+---
+description: Project Chimera — default Cursor agent behavior (spec-first, MCP boundary)
+globs:
+alwaysApply: true
+---
+
+# Project Chimera
+
+- **Before code:** Read root [`CLAUDE.md`](../../CLAUDE.md) and the relevant files under [`specs/`](../../specs/) (`_meta.md`, `functional.md`, `technical.md`, and `openclaw_integration.md` when networking applies).
+- **DTOs:** Java `record` only for agent payloads; opaque blobs as JSON strings—never `Map<String, Object>` on DTOs.
+- **External I/O:** Runtime integration only through MCP; no direct vendor HTTP/SDK calls from agent core packages.
+- **Concurrency:** Prefer `Executors.newVirtualThreadPerTaskExecutor()` for worker-scale work; avoid raw `Thread` and legacy pools for swarm paths.
+- **Tests:** JUnit 5; contract tests in `tests/` may be red until implementation—preserve or extend them instead of deleting to “go green.”
+- **Traceability:** Public types need Javadoc tying to SRS sections and US-XXX where applicable.
+
+For full wording, mirror policies in [`CLAUDE.md`](../../CLAUDE.md).
