@@ -13,7 +13,7 @@
 # - Checkstyle is invoked via `mvn checkstyle:check` (no execution bound to a lifecycle phase in
 #   pom.xml); `make verify` runs `mvn verify` then Checkstyle in one step.
 
-.PHONY: setup test lint clean verify spec-check docker-test help
+.PHONY: setup test lint clean verify spec-check docker-build docker-run docker-test help
 
 # Wrapper script (Unix / Git Bash). On Windows CMD/PowerShell: substitute mvnw.cmd manually.
 MVN := ./mvnw
@@ -47,10 +47,17 @@ spec-check:
 	@test -s CLAUDE.md                       || (echo "missing/empty: CLAUDE.md" && exit 1)
 	@test -s .cursor/rules/CLAUDE.md         || (echo "missing/empty: .cursor/rules/CLAUDE.md" && exit 1)
 
-## docker-test: Requires a Dockerfile in repo root (optional; not present in all checkouts)
-docker-test:
-	docker build -t chimera-test .
-	docker run --rm chimera-test mvn test
+## docker-build: OCI image (Spring Boot JAR). Tests skipped during package — use `make test` for the suite
+docker-build:
+	docker build -t chimera:latest .
+
+## docker-run: Run container on port 8080 (foreground; Ctrl+C stops)
+docker-run:
+	docker run --rm -p 8080:8080 --name chimera chimera:latest
+
+## docker-test: Build image only; smoke-run the app yourself with `make docker-run`
+docker-test: docker-build
+	@echo "Image chimera:latest built. Smoke: make docker-run  (then open http://localhost:8080)"
 
 ## help: List targets
 help:
