@@ -1,39 +1,40 @@
-name: Project Chimera CI
+# Project Chimera — continuous integration
+# Runs Checkstyle (make lint) then unit tests (make test) on Java 21 via Maven Wrapper.
+
+name: CI
 
 on:
   push:
-    branches: ["**"]
   pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  build:
+    name: Lint & test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Set up Java 21
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: "21"
+          cache: maven
 
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+      - name: Make Maven Wrapper executable
+        run: chmod +x mvnw
 
-      - name: Setup dependencies
-        run: make setup
-
-      - name: Run tests (expect failures — TDD)
-        run: make test
-        continue-on-error: true
-
-      - name: Run lint
+      - name: Lint (Checkstyle)
         run: make lint
-        continue-on-error: true
 
-      - name: Spec check
-        run: make spec-check
+      - name: Test (JUnit 5 / Surefire)
+        run: make test
