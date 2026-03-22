@@ -1,8 +1,8 @@
 # Project Chimera — Technical Specification
-> **Version:** 1.1.0  
+> **Version:** 1.2.0  
 > **Status:** Ratified  
 > **Source:** SRS v2026 §6.2, §3  
-> **Changelog:** 1.1.0 — HITL Dashboard operator contract (§6); aligns with `specs/functional.md` US-019 and Judge/OCC models in §1–§4.
+> **Changelog:** 1.2.0 — Governed **TransactionRequest** wire contract (§7), CFO gate and validation rules. 1.1.0 — HITL Dashboard (§6).
 
 ---
 
@@ -60,7 +60,7 @@ public record AgentPersona(
     String characterReferenceId
 ) {}
 
-// --- Commerce DTO ---
+// --- Commerce DTO (minimal scaffold; canonical governed envelope — §7 TransactionRequest Contract) ---
 public record TransactionRequest(
     UUID agentId,
     String toAddress,
@@ -147,6 +147,8 @@ public record TransactionRequest(
 ---
 
 ### POST /api/commerce/transact — Request On-Chain Transaction
+**Normative financial envelope:** Requests MUST conform to **§7 TransactionRequest Contract** (fields, validation, CFO gate). The JSON below is a **legacy shorthand**; new integrations SHOULD use the §7 shape including `transaction_id`, `request_type`, `currency`, `budget_category`, `purpose`, `requested_at`, and `approval_status`.
+
 **Request:**
 ```json
 {
@@ -416,5 +418,115 @@ This mirrors **US-012** / `AgentResult.stateVersion` discipline across the Plann
 - **Arbitrary integrations:** Webhooks to unapproved third parties, embedded LLM calls in the dashboard tier for content rewriting, or vendor SDKs in the dashboard codebase.
 - **Substituting Judge:** Operators cannot bypass Judge routing rules or force auto-publish for sub-threshold confidence without a **new** Judge-evaluated artifact.
 - **Financial execution:** On-chain or budget mutation from the dashboard; **CFO Judge** paths remain separate (§2 commerce APIs).
+
+---
+
+## 7. TransactionRequest Contract
+
+This section defines the **governed financial request envelope** for any spend or transfer the autonomous system initiates. It is the **single normative contract** for JSON persistence, API payloads, and future **Java `record`** shapes (strong typing in spirit: explicit fields, enumerated domains, no untyped maps on DTOs per §1).
+
+**Architecture alignment:** `research/architecture_strategy.md` (CFO Sub-Judge, Coinbase AgentKit / on-chain ledger). **Functional:** `specs/functional.md` **US-013**–**US-015**, **US-014** (daily cap). **Execution path:** Planner/Worker proposes a `TransactionRequest` → **CFO Judge** validates budget and policy → only after **approval** may runtime invoke **MCP** tools (e.g. `mcp-server-coinbase` transfer) or other **governed** bridges—**never** direct vendor SDK calls from agent core (FR 4.0 / MCP-only).
+
+### 7.1 Purpose
+
+- **Correlate** intent to spend or move value with **agent identity**, **budget class**, and **OCC** (`state_version`).
+- **Gate** every financial side effect: **no ledger mutation, chain transaction, or MCP financial tool invocation** may proceed **without** a successful **CFO Judge** validation step for that `transaction_id` (or equivalent idempotency key).
+- **Audit** requests and outcomes via `approval_status`, timestamps, and linkage to `TRANSACTION_LOG` (§3).
+
+### 7.2 CFO Judge gate (hard rule)
+
+**MUST NOT:** Execute, sign, broadcast, or confirm any transaction; debit budgets; or call MCP tools whose primary effect is moving funds or committing spend **until** the **CFO Judge** has evaluated the `TransactionRequest` against **daily and policy limits** and set `approval_status` to **`APPROVED`** for that request.
+
+**MUST:** Reject over-budget or invalid requests with **`REJECTED`** and a stable machine-readable reason (see §7.6). **PENDING** requests MUST NOT trigger execution.
+
+### 7.3 Business rules
+
+| Rule | Description |
+|---|---|
+| **BR-1** | One `transaction_id` identifies at most **one** logical financial attempt; retries use a **new** `transaction_id` or documented idempotency policy. |
+| **BR-2** | **Daily spend** per `agent_id` MUST NOT exceed configured cap (default **50 USDC/day** per §5 / US-014) after summing approved amounts in **`currency`** (normalized accounting). |
+| **BR-3** | `request_type` selects which **MCP tool family** may run **after** approval (e.g. on-chain transfer vs. billed API prepayment); the runtime MUST NOT mix types without a new request. |
+| **BR-4** | **`budget_category`** MUST map to CFO policy lines (caps, alerts, blocked categories) defined in deployment config. |
+| **BR-5** | **External execution** (chain, exchange, billed third-party) occurs **only** through **MCP servers** approved in the runtime manifest—**not** raw HTTP clients in `com.chimera` agent packages. |
+
+### 7.4 Field definitions (JSON / API)
+
+| JSON field | Type | Required | Description |
+|---|---|---|---|
+| `transaction_id` | UUID | yes | Idempotent key for this request; client-generated or server-assigned before CFO evaluation. |
+| `agent_id` | UUID | yes | Agent / persona incurring the spend (`AGENT_PERSONA.id`). |
+| `request_type` | string enum | yes | e.g. `ON_CHAIN_TRANSFER` \| `MCP_BILLED_USAGE` \| `INTERNAL_LEDGER_ADJUSTMENT` (deployment MAY extend; values MUST be enumerated, not free text). |
+| `amount` | number | yes | **Strictly positive** decimal magnitude in **minor units or whole currency units** as defined for `currency` (e.g. `5.00` USDC); see §7.6. |
+| `currency` | string | yes | **ISO 4217** code for fiat (e.g. `USD`) **or** a **deployment-defined** code for crypto (e.g. `USDC` on Base); MUST be non-blank. |
+| `budget_category` | string enum | yes | e.g. `MEDIA_GENERATION` \| `PUBLISHING` \| `INFRA_MCP` \| `TRENDS` \| `OTHER` — maps to CFO policy. |
+| `purpose` | string | yes | Human- and audit-readable justification; **non-blank** after trim. |
+| `state_version` | integer | yes | OCC: **GlobalState** / spend snapshot version at request construction (US-012). |
+| `requested_at` | string (RFC 3339) | yes | When the request was created (client or edge clock; server MAY normalize to UTC). |
+| `approval_status` | string enum | yes | `PENDING` \| `APPROVED` \| `REJECTED` \| `EXECUTED` \| `FAILED` — see §7.5. |
+
+**Optional clear equivalents (recommended on wire for on-chain parity with §2):**
+
+| JSON field | Type | Required | Description |
+|---|---|---|---|
+| `counterparty_address` | string | no | Destination address for `ON_CHAIN_TRANSFER` (replaces legacy `to_address` name). |
+| `correlation_task_id` | UUID | no | Links spend to `AgentTask.taskId` when applicable. |
+
+### 7.5 `approval_status` lifecycle
+
+| Value | Meaning |
+|---|---|
+| `PENDING` | **Default** on creation; CFO has not yet approved or rejected. **No execution.** |
+| `APPROVED` | CFO Judge passed budget/policy checks; runtime **may** invoke governed MCP execution **once** per idempotency rules. |
+| `REJECTED` | CFO denied; **no** execution; reason recorded (e.g. over budget). |
+| `EXECUTED` | MCP/ledger reports success; terminal for happy path. |
+| `FAILED` | Approved but execution failed (MCP error, chain revert); MAY allow retry as **new** `transaction_id`. |
+
+### 7.6 Validation rules
+
+| ID | Rule |
+|---|---|
+| **V-1** | `amount` **>** `0` (strictly greater than zero). |
+| **V-2** | `currency` MUST be present and **non-blank** after trim. |
+| **V-3** | `budget_category` MUST be present and MUST equal a **known** enum value for the deployment. |
+| **V-4** | `purpose` MUST be non-blank after trim (no whitespace-only). |
+| **V-5** | If `approval_status` is omitted on **create**, the server MUST default it to **`PENDING`**. |
+| **V-6** | **Over-budget:** If projected spend for `agent_id` + `currency` + window exceeds cap, CFO MUST set **`REJECTED`** (or leave `PENDING` with no execution—**never** `APPROVED`); response aligns with `BudgetExceededException` semantics (§2). |
+| **V-7** | **`state_version`:** On submit, MUST match authoritative spend/global state or return **409** / reject without execution (same OCC discipline as HITL §6.5). |
+| **V-8** | **Execution coupling:** `EXECUTED` MUST NOT be set unless `approval_status` was **`APPROVED`** and MCP (or governed adapter) returned success. |
+| **V-9** | **MCP-only execution:** Post-approval, only **MCP tool invocations** configured for financial actions MAY perform external effects; agent core MUST NOT bypass MCP for those effects. |
+
+### 7.7 JSON example (full envelope)
+
+```json
+{
+  "transaction_id": "990e8400-e29b-41d4-a716-446655440099",
+  "agent_id": "770e8400-e29b-41d4-a716-446655440002",
+  "request_type": "ON_CHAIN_TRANSFER",
+  "amount": 5.0,
+  "currency": "USDC",
+  "budget_category": "MEDIA_GENERATION",
+  "purpose": "Pay for image generation via governed MCP billing path",
+  "state_version": 7,
+  "requested_at": "2026-03-22T15:30:00Z",
+  "approval_status": "PENDING",
+  "counterparty_address": "0xABC1234567890ABCDEF1234567890ABCDEF123456",
+  "correlation_task_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**After CFO approval (illustrative response body fragment):**
+
+```json
+{
+  "transaction_id": "990e8400-e29b-41d4-a716-446655440099",
+  "approval_status": "APPROVED",
+  "state_version": 8,
+  "mcp_execution_hint": "invoke coinbase.transfer_asset per runtime manifest"
+}
+```
+
+### 7.8 Mapping note (Java `record`, non-normative)
+
+Future `TransactionRequest` records SHOULD expose §7 fields as **distinct record components** (UUIDs as `UUID`, money as `BigDecimal` or integer minor units per team standard, instants as `Instant`, enums as Java `enum` types). **Opaque extensions** MUST be JSON strings, not `Map<String, Object>`, per §1.
 
 ---
