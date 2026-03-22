@@ -27,6 +27,7 @@
     <junit.version>5.10.2</junit.version>
     <mockito.version>5.11.0</mockito.version>
     <checkstyle.version>3.3.1</checkstyle.version>
+    <build-helper.version>3.6.0</build-helper.version>
   </properties>
 
   <dependencyManagement>
@@ -109,6 +110,27 @@
 
   <build>
     <plugins>
+      <!-- Additional test sources: tests/ (contract filenames per US-018 tooling) -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>${build-helper.version}</version>
+        <executions>
+          <execution>
+            <id>add-test-source</id>
+            <phase>generate-test-sources</phase>
+            <goals>
+              <goal>add-test-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>tests</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
       <!-- Compiler — Java 21 (virtual threads via Executors at runtime) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -124,7 +146,17 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
-        <configuration/>
+        <configuration>
+          <!-- Default *Test.java misses tests/com/chimera/trendFetcherTest.java style names -->
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/Test*.java</include>
+            <include>**/*Tests.java</include>
+            <include>**/trendFetcherTest.java</include>
+            <include>**/skillsInterfaceTest.java</include>
+            <include>**/judgeRoutingTest.java</include>
+          </includes>
+        </configuration>
       </plugin>
 
       <!-- Checkstyle -->
