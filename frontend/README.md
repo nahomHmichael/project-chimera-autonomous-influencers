@@ -1,6 +1,24 @@
-# Project Chimera — HITL Dashboard (concept only)
+# Project Chimera — HITL Dashboard
 
-This folder holds **no runnable UI**. It documents a **lightweight operator concept** for the Human-in-the-Loop (HITL) control plane described in `specs/functional.md` (Human-in-the-Loop Dashboard, **US-019**) and `specs/technical.md` §6.
+This folder documents the **operator HITL concept** (`specs/functional.md` **US-019**, `specs/technical.md` §6) and includes a **tiny static demo** for walkthroughs — not a product frontend.
+
+## Runnable demo (optional)
+
+Open **`hitl-demo/index.html`** in a browser (double-click, or `file:///…/frontend/hitl-demo/index.html`). No build, no npm, no server required.
+
+- **Mock data only** — three pending items (medium-confidence HITL + one sensitive-topic override).
+- **Local UI state** — Approve / Reject / Escalate updates the list and a session audit strip only.
+- **Not implemented:** backend APIs, auth, persistence, `POST /api/judge/review`, MCP, publish, wallet/budget UI.
+
+## What was created vs intentionally omitted
+
+| Created | Omitted (by design) |
+|--------|----------------------|
+| Single-file ops-style dashboard mock (`hitl-demo/index.html`) | React/Vue toolchain, bundler, tests |
+| Table + detail + actions + in-page audit log | Real Judge integration, OCC / 409 handling |
+| Field labels aligned with §6.3 | Design system, i18n, accessibility audit |
+
+This **supports the architecture story**: Judge-routed queue → human **APPROVE** / **REJECT** / **ESCALATE** → auditable decision — without expanding repo scope into a full frontend program.
 
 ---
 
@@ -100,7 +118,7 @@ Optional: SLA timer (2h / 4h escalation narrative from NFR 1.1) as **display-onl
 
 ## Non-goals
 
-- **No** React, Vue, Svelte, or other app code in this repo path.
+- **No** frontend build system (Webpack, Vite, npm workspace) — the demo is one static HTML file.
 - **No** real auth, routing, or API client — backend contracts live in `specs/technical.md` §6.
 - **No** direct publish buttons that hit Twitter/Instagram from the browser.
 - **Not** a marketing site, influencer-facing app, or content editor product.
