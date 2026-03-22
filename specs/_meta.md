@@ -53,3 +53,4 @@ expression, and economic agency at scale (1,000+ concurrent agents).
 - [`specs/technical.md`](./technical.md) — API contracts, schemas, ERD
 - [`specs/openclaw_integration.md`](./openclaw_integration.md) — OpenClaw network protocol
 - [`research/architecture_strategy.md`](../research/architecture_strategy.md) — Architectural decisions
+- [`research/tooling_strategy.md`](../research/tooling_strategy.md) — Developer MCP vs runtime MCP vs skills
