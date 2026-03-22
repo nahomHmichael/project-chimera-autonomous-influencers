@@ -12,11 +12,15 @@ import com.chimera.commerce.BudgetExceededException;
 import com.chimera.judge.CfoJudge;
 import com.chimera.judge.DefaultJudge;
 import com.chimera.model.AgentResult;
-import com.chimera.model.DailySpendSnapshot;
+import com.chimera.model.ApprovalStatus;
+import com.chimera.model.BudgetCategory;
 import com.chimera.model.GlobalStateSnapshot;
 import com.chimera.model.JudgeRouting;
 import com.chimera.model.ReviewDecision;
 import com.chimera.model.TransactionRequest;
+import com.chimera.model.TransactionRequestType;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
@@ -90,18 +94,27 @@ class judgeRoutingTest {
     class CfoExceptions {
 
         @Test
-        @DisplayName("CfoJudge.validate may throw BudgetExceededException when daily cap exceeded")
+        @DisplayName("CfoJudge.review may throw BudgetExceededException when daily cap exceeded (US-014 / §7.6)")
         void budgetExceededExceptionIsPartOfContract() {
+            TransactionRequest spendRequest =
+                    new TransactionRequest(
+                            UUID.fromString("990e8400-e29b-41d4-a716-446655440099"),
+                            AGENT,
+                            TransactionRequestType.ON_CHAIN_TRANSFER,
+                            new BigDecimal("100.00"),
+                            "USDC",
+                            BudgetCategory.MEDIA_GENERATION,
+                            "contract test — over cap",
+                            1,
+                            Instant.parse("2026-03-22T15:30:00Z"),
+                            ApprovalStatus.PENDING,
+                            "0xabc",
+                            TASK);
             doThrow(new BudgetExceededException("US-014 daily cap"))
                     .when(cfoJudge)
-                    .validate(any(TransactionRequest.class), any(DailySpendSnapshot.class));
-            assertThrows(
-                    BudgetExceededException.class,
-                    () ->
-                            cfoJudge.validate(
-                                    new TransactionRequest(AGENT, "0xabc", 100f, "test", 1),
-                                    new DailySpendSnapshot(AGENT, 49f, 50f)));
-            verify(cfoJudge).validate(any(TransactionRequest.class), any(DailySpendSnapshot.class));
+                    .review(any(TransactionRequest.class));
+            assertThrows(BudgetExceededException.class, () -> cfoJudge.review(spendRequest));
+            verify(cfoJudge).review(any(TransactionRequest.class));
         }
     }
 }
