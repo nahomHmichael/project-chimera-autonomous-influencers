@@ -1,0 +1,15 @@
+# Build context hygiene — keep the Docker build fast and deterministic
+target/
+.git
+.github
+.idea
+.vscode
+.cursor
+*.iml
+.DS_Store
+Thumbs.db
+**/*.log
+agent-transcripts/
+terminals/
+mcps/
+node_modules/
