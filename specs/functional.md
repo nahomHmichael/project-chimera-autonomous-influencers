@@ -1,7 +1,8 @@
 # Project Chimera — Functional Specification
-> **Version:** 1.0.0  
+> **Version:** 1.1.0  
 > **Status:** Ratified  
-> **Source:** SRS v2026 §4
+> **Source:** SRS v2026 §4  
+> **Changelog:** 1.1.0 — Human-in-the-Loop dashboard (operator control plane); see § Human-in-the-Loop Dashboard and US-019.
 
 ---
 
@@ -109,6 +110,55 @@
 > generated content, confidence score (colour-coded), and reasoning trace, with Approve
 > and Reject buttons so that I can action items within the 2-hour SLA.
 
+---
+
+## Human-in-the-Loop Dashboard
+
+The **HITL Dashboard** is a **governed operator control plane**: it surfaces work the **Judge** has already routed into human review. It is **not** a consumer product frontend, **not** a publishing client, and **not** an integration surface for arbitrary third-party APIs. All execution and external side effects (including MCP publish tools) remain downstream of **Chimera runtime services** (Judge commit, Planner re-queue, Orchestrator policies) after a **durable, auditable** reviewer decision is recorded.
+
+**Alignment with Judge routing (NFR 1.1, NFR 1.2):**
+
+| Judge outcome | Dashboard involvement |
+|---|---|
+| Confidence **> 0.90** (auto-execute path) | Items **do not** appear on the dashboard for routine approval; they proceed per automated policy. |
+| Confidence **0.70–0.90** (async HITL band) | Items **appear** as reviewable queue entries until a reviewer acts or SLA policies apply. |
+| Confidence **< 0.70** | Items **do not** require human approval to discard; the Planner retry path applies. **No dashboard action** is used to substitute for Judge reject/retry. |
+| **Sensitive topic** (US-011) | Items **must** appear for human adjudication **regardless** of confidence score. |
+
+**US-019**
+> As a **Human Reviewer**, I need a **HITL Dashboard** that lists only content **the Judge has routed** into the human review queue—showing **confidence score**, **policy flags**, and a **safe summary or preview** of the proposed output—so that I can issue **APPROVE**, **REJECT**, or **ESCALATE** decisions within the **2-hour SLA**, knowing each action is **persisted as an auditable review decision**, that **no action on this surface directly publishes** content to social platforms, and that **the dashboard never calls third-party HTTP/APIs** (all runtime external access remains **MCP-mediated** through Chimera services).
+
+### Dashboard actions (normative)
+
+Each reviewable item MUST support exactly these **terminal reviewer verbs** (names are canonical):
+
+| Action | Functional intent |
+|---|---|
+| **APPROVE** | Authorize the **runtime** to proceed along the post-Judge path (e.g. commit or enqueue work that may ultimately invoke MCP publish tools **outside** the dashboard). The dashboard records approval only; it does not perform publish. |
+| **REJECT** | Deny the proposed output; the runtime MUST route to **reject / retry** semantics consistent with US-010 (Planner or Judge policy), not auto-publish. |
+| **ESCALATE** | Transfer responsibility to a **higher tier** (e.g. senior moderator, compliance, or operational runbook) **without** authorizing publish. Used for ambiguous cases, policy edge cases, or **SLA breach** handling per NFR 1.1 (escalate after 4 hours without action—**never** auto-publish). |
+
+### Review item payload (normative minimum)
+
+Every row or API projection representing a queue item MUST expose at minimum:
+
+| Field | Description |
+|---|---|
+| `reviewId` | Stable identifier for this **HITL review record** (distinct from `taskId` when one task is re-reviewed). |
+| `taskId` | Correlates to `AgentTask.taskId` / content job pipeline. |
+| `agentId` | Agent / persona instance under review. |
+| `contentSummaryOrPreview` | Non-executable summary, truncated preview, or structured excerpt—sufficient for operator judgment **without** requiring the dashboard to embed arbitrary rich executables. |
+| `confidenceScore` | Worker's/Judge-facing score in **[0.0, 1.0]**, consistent with US-009 and US-010. |
+| `policyFlags` | Machine-readable flags (e.g. sensitive-topic class, disclosure obligations, budget warnings). **Opaque structured data** MAY be carried as a JSON string per technical DTO rules. |
+| `createdAt` | When the item entered the HITL queue (RFC 3339). |
+| `stateVersion` | **OCC** snapshot the reviewer must echo on submit (US-012); stale submits are rejected by the control plane. |
+
+### Auditability and boundaries
+
+- **Audit:** Every **APPROVE**, **REJECT**, or **ESCALATE** MUST create an **immutable audit record** (who, when, which `reviewId`, decision, optional notes, resulting `state_version` transition). See `specs/technical.md` §6.
+- **No direct publish:** The dashboard MUST NOT invoke platform posting, media generation, or wallet operations. Those occur only in **Worker / post-commit runtime** paths via **MCP** as specified elsewhere.
+- **No direct third-party APIs:** The dashboard communicates only with **Chimera-approved operator APIs** (or equivalent internal gateways); it MUST NOT embed vendor SDKs or arbitrary outbound integrations.
+
 **US-018**
 > As a **Developer**, I need a CLI `make` command to run all failing tests so that I can
 > verify the TDD "empty slots" are intact before submitting a PR.
@@ -137,3 +187,4 @@
 | US-016 | UI 1.1 | Should Have |
 | US-017 | NFR 1.1, UI HITL | Must Have |
 | US-018 | Challenge Task 4 | Must Have |
+| US-019 | NFR 1.1, NFR 1.2, HITL Dashboard | Must Have |
